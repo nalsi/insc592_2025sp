@@ -1,0 +1,310 @@
+---
+title: "demo_week 14"
+author: "Kai Li"
+date: "2024-04-16"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(jtools)
+library(nnet)
+library(tidyr)
+library(rpart)
+library(Metrics)
+library(caret) 
+
+```
+
+In this demo, we will use the following dataset:
+
+```{r}
+mydata <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+```
+
+The dataset contains four columns:
+
+```         
+- GRE (Graduate Record Exam scores) 
+- GPA (grade point average) 
+- prestige of the undergraduate institution 
+- admission into graduate school (our categorical DV)
+```
+
+Our general question in this demonstrations is:
+
+```         
+- How can GRE, GPA, and the prestige of the institution affects or predicts one's admission rate?
+
+- Can we predict the admission rate based on the other factors?
+```
+
+But one thing we want to do is to change the class of rank from numeric
+to categorical (as explained last week, the type of variable will be
+passed to the model to affect the results).
+
+```{r}
+mydata$admit <- factor(mydata$admit)
+```
+
+### Classification
+
+#### Decision tree
+
+We again split the training and testing sets.
+
+```{r}
+# we can use set.seed(n) to get reproducible results for any task involve randomization.
+set.seed(1)
+# we create a sample that is 75% of the movies dataset
+sample <- sample(c(TRUE,FALSE), nrow(mydata),  
+                 replace=TRUE, prob=c(0.75,0.25)) 
+# creating training dataset 
+train_dataset  <- mydata[sample, ] 
+# creating testing dataset 
+test_dataset  <- mydata[!sample, ] 
+```
+
+rpart() function creates a decision tree model.
+
+```{r}
+# Base Model: Use admit as DV and rest of variables as IV
+# method parameter specifies that the DV is categorical.
+tree_fit <- rpart(admit ~ ., 
+                  data = train_dataset, 
+                  method = "class",
+                  control = rpart.control(cp = 0))
+```
+
+We can see the original tree model. Again, the graph shows decisions
+that can be made to segregate the data into different groups (the bottom
+row).
+
+```         
+For example, the first decision is whether rank >= 2, if yes (moving to left), we get 85% of the sample with 26% of survival rate. And if no (right), we get 15% of sample with 59% of survival rate.
+```
+
+```{r}
+library(rpart.plot)
+rpart.plot::rpart.plot(tree_fit, type = 1, cex = 0.6)
+```
+
+We can further inspect all rules that are behind the model.
+
+```{r}
+rules <- rpart.rules(tree_fit)
+print(rules)
+```
+
+We can also visualize the importance of each variable in the model, as
+another way to understand how the independent variables are contributing
+to the outcomes.
+
+```{r}
+# Load the necessary library
+library(vip)
+
+# Create a variable importance plot
+var_importance <- vip::vip(tree_fit, num_features = 10)
+print(var_importance)
+```
+
+But how about the performance of the model? We can predict the values in
+the testing set and then evaluate the difference between learned results
+and our baseline data. The final accuracy is 67.4% (64 / 95).
+
+```{r}
+# Compute the accuracy of the pruned tree
+test_dataset$pred_tree <- predict(tree_fit, test_dataset, type = "class")
+table(test_dataset$pred_tree, test_dataset$admit)
+```
+
+There are also functions to calculate these measurements together. In
+the results returned by the confusionMatrix(), "Pos Pred Value" is
+precision and "Sensitivity" is recall.
+
+```{r}
+actual = test_dataset$admit
+predicted = test_dataset$pred_tree
+
+xtab <- table(predicted, actual)
+# load Caret package for computing Confusion matrix
+caret::confusionMatrix(xtab)
+```
+
+In many cases, we may want to keep adjusting the tree model after this
+step, also called "pruning". We are not showing this in our dataset,
+because our dataset is pretty weird (too few independent variables) for
+a tree model and pruning does not help with the accuracy. But you can
+find a good description of how to do this here:
+<https://dzone.com/articles/decision-trees-and-pruning-in-r>.
+
+#### Random forest
+
+```{r}
+library(randomForest)
+library(datasets)
+library(caret)
+```
+
+Let's construct a RF model based on the same formula.
+
+```{r}
+rf <- randomForest::randomForest(admit~., data=train_dataset, proximity=TRUE) 
+print(rf)
+```
+
+The final accuracy of applying the model on the testing data is 69.5%,
+which is slightly better than our random forest model, which is not so
+surprising.
+
+```{r}
+p1 <- predict(rf, test_dataset)
+confusionMatrix(p1, test_dataset$admit)
+```
+
+#### logit regression
+
+We will again use the same training and testing datasets for logit
+regression. We create a logit (binomial) regression model using the
+glm() function, which covers many types of linear models in R. The
+family parameter in the function specifies that we are going the logit
+regression model.
+
+```{r}
+glm_out <- glm(
+  admit ~ gre + gpa + rank,
+  data = train_dataset,
+  family=binomial(link=logit),
+  maxit=500
+) # family = binomial required for logistic regression
+summary(glm_out)
+```
+
+Interpretation of results:
+
+```         
+1.  We have an AIC number as the general evaluation of the model,
+    even though this number only makes sense when we compare it with
+    other numbers.
+
+2.  p-value for the variables should be explained in the same way as
+    in linear regression models. 
+    
+3.  The estimate, like explained in the lecture, shows the log
+        probability for the variables.
+
++   For numeric variables (gre and gpa), it shows as the independent
+    variable increases by one unit, whether the outcome variable will
+    have increasing probability or not. Here, GRE score is having a
+    significant positive relationship (despite very weak) with the final outcome.
+
++   For the categorical variable (rank), it shows whether the other
+    categories are having better outcome than the baseline category in
+    this variable. All other ranks are having worse outcomes than rank1.
+```
+
+Remember that the coefficients in the table above are the log-odds, so
+we need to make sense of the numbers by using the exp() function to
+translate the ranged likelihood into a raw number. In this case, we can
+see that:
+
+```         
+1. GRE score: one unit of increase can lead to, on average,
+0.3% of extra possibility to be recruited. 
+
+2. GPA score: one unit of
+increase can lead to more than 100% of increasing of the possibility of
+being recruited. 
+
+3. Rank: People from Rank 2 institutions are only having
+41.1% of the possibility to be recruited comparing to Rank 1
+institutions, and Rank 3 having 18.5% of possibility comparing to R1.
+```
+
+```{r}
+## CIs using profiled log-likelihood
+exp(coefficients(glm_out))
+```
+
+```{r}
+## CIs using profiled log-likelihood
+exp(confint(glm_out))
+```
+
+We can use the old trick to see how each category in the rank variable
+contributes to the outcome. The figure shows that rank 1 students have
+about 55% change on average to be admitted, comparing to 35% for rank 2
+students, which is about 53% of rank 1 (the results from exp()
+function).
+
+```{r}
+library(ggeffects)
+ggpredict(glm_out, terms = "rank") |> 
+  plot()
+```
+
+Using logit regression, we can also do stepwise model selection using
+the step() function. The results show that for all independent variables
+in the existing model, removing which one will lead to the best results
+(as indicated by the lowest AIC number). **So in our model, the existing
+group of independent variables performs the best than removing anyone
+(because we already have a pretty simple model!).**
+
+```{r}
+stats::step(glm_out)
+```
+
+Like in linear regression model, we can use the testing set to evaluate
+the performance of the model.
+
+Using the predict() function, we only get the **probability of the
+positive response of each observation**.
+
+```{r}
+test_dataset$logit_prediction = predict(glm_out, test_dataset, type = "response")
+```
+
+We can set up a cutoff point in the probability (say 50%) to evaluate
+how the model works by constructing a confusion matrix.
+
+Using 50% as the cut point, for example, the accuracy of the model is
+0.653, which is not bad! But we may still want to choose the random
+forest model based on this case.
+
+```{r}
+test_dataset$logit_final = ifelse(test_dataset$logit_prediction >= 0.5, "1", "0")
+test_dataset$logit_final = as.factor(test_dataset$logit_final)
+confusionMatrix(test_dataset$admit, test_dataset$logit_final)
+```
+
+### Activity
+
+Based on the example of this week and last week, use the example of
+Boston dataset (from MASS package) to try linear regression and at least
+one classification methods to predict what variables could influence
+house price. I am expecting you to report (1) their prediction
+performance and (2) if we can any different conclusions about which
+variables.
+
+To use classification, you may want to transform the house price to a
+categorical variable. You can edit the following code from W5 file:
+
+```         
+# In this example, we are creating a new column in the dataset called "Temp_group" to have the reclassified information from the original "Temp" column (temperature). 
+
+# If the temperature is at least 79 degrees, we will classify the data as "High" and otherwise "Low."
+
+data <- data %>% mutate(Temp_group = case_when(Temp>= 79~ "High",
+                                               Temp< 79~ "Low"))
+```
+
+You can focus on prediction and evaluating the accuracy of the results.
+But if you want, you can still also explain the model.
+
+If it is a group project, please include the names of all your team
+members.

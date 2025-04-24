@@ -1,0 +1,186 @@
+---
+title: "Clustering method demonstration"
+author: "Kai Li"
+date: "2024-04-23"
+output: html_document
+---
+
+We removed two variables, chas and rad from the dataset, because they are not totally numeric.
+
+We should also make sure that there is no NA value in the dataset.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(MASS)
+data(Boston)
+?Boston
+
+### removing two columns
+drop = c("chas", "rad")
+Boston = Boston[,!(names(Boston) %in% drop)]
+
+### For hierarchical clustering, we need to make sure that there is no NA value in the dataset.
+?colSums
+colSums(is.na(Boston))
+
+```
+
+## R Markdown
+
+### K-means
+
+First, let's try a very simple clustering method and see the results of grouping. K-means requires a number of groups to classify, which we normally don't know in the beginning. But we can use the number of three just for testing.
+
+The results show which instance is classified into which group.
+
+```{r}
+
+# We first normalize the data, which is important for K-means.
+Boston1 = scale(Boston)
+
+# We will feed the normalized data to the model and set the number of cluster to 3.
+model <- kmeans(Boston1, centers = 3)
+model$cluster
+```
+
+**We can extract all cluster number by calling "$cluster" in the results.** So in the case where we want to understand the accuracy of classification, we can still compare it with other categories in the data.
+
+``` {r}
+table(model$cluster)
+```
+
+We can use the following method to see how well the model works. We hope the ratio to be as close to 1 (or 100%) as possible. But in this case, our clustering model does not work very well.
+
+``` {r}
+(BSS <- model$betweenss)
+(TSS <- model$totss)
+BSS / TSS * 100
+```
+
+nstart parameter in the kmeans function asks the model to take the best model from 20 random tries (because the selection of best centers is a random process). So it can (potentially) increase the performance of the model.
+
+``` {r}
+model2 <- kmeans(Boston1, centers = 3, nstart = 20)
+100 * model2$betweenss / model2$totss
+```
+
+We can use the elbow method to choose the best number of K.
+
+``` {r}
+# load required packages
+library(factoextra)
+library(NbClust)
+
+# Elbow method
+fviz_nbclust(Boston1, kmeans, method = "wss") +
+  labs(subtitle = "Elbow method") # add subtitle
+```
+
+By using the nstart parameter, we can see the elbow method result is actually better (more smooth).
+
+``` {r}
+# Elbow method
+fviz_nbclust(Boston1, kmeans, method = "wss", nstart = 10) +
+  labs(subtitle = "Elbow method") # add subtitle
+```
+
+And then, we can also use the silhouette method to validate the number.
+
+``` {r}
+# Silhouette method
+fviz_nbclust(Boston1, kmeans, method = "silhouette", nstart = 20) +
+  labs(subtitle = "Silhouette method")
+```
+
+We can plot the clusters from the model. Here, the result is already based on the PCA method (please see the two axes labels). 
+
+``` {r}
+library(factoextra)
+km_res <- kmeans(Boston1, centers = 2, nstart = 10)
+fviz_cluster(km_res, Boston, ellipse.type = "norm")
+```
+
+Another way to evaluate the performance of the model is to calculate the silhouette width: the higher the number is, the better the results are. 
+```
+The silhouette score helps determine how well a data point fits within its assigned cluster and how poorly it fits into neighboring clusters. 
+```
+
+Any silhouette score above 0.7 can be interpreted as good and above 0.5 as decent, which shows that the clusters are consistent with the similarity of instances. 
+
+``` {r}
+km_res <- kmeans(Boston1, centers = 2, nstart = 10)
+sil <- silhouette(km_res$cluster, dist(Boston_new))
+fviz_silhouette(sil)
+```
+
+### Hierarchical
+
+We can similarly apply hierarchical clustering using the hclust() function.
+
+``` {r}
+# Hierarchical clustering: single linkage
+# The method parameter specifies the method to calculate the distance between clusters.
+hclust <- hclust(dist(Boston1), method = "ward.D")
+```
+
+There are a few different methods we can choose in hclust() function to calculate distance between observations. Here is an explanation of how we choose choose from them: https://stats.stackexchange.com/questions/195446/choosing-the-right-linkage-method-for-hierarchical-clustering.
+
+But there is no "single right answer" here! (After all, we are not comparing our results to some baseline data.)
+
+Visualing this dataset is hard because there are so many observations. But we can still see a structure and potentially apply the grouping to the map visualization to find more patterns.
+
+``` {r}
+plot(hclust)
+```
+
+In the dendrogram, we can plot the cluster boundaries as well by giving any number that is meaningful.
+
+``` {r}
+plot(hclust)
+rect.hclust(hclust,
+  k = 3, # k is used to specify the number of clusters
+  border = "blue"
+)
+```
+
+Similarly, we can plot the results in a 2-D space based on PCA methods being automatically used.
+
+``` {r}
+# We can use the cutree() function to create groups by using a pre-defined group number.
+sub_grp <- cutree(hclust, k = 2)
+fviz_cluster(list(data = Boston, cluster = sub_grp))
+```
+
+Similarly, we can examine the group information from the model.
+
+``` {r}
+sub_grp
+```
+
+``` {r}
+table(sub_grp)
+```
+
+We generally don't need to evaluate hierarchical clustering method, because the number of clusters is random. But we can, potentially, use ground truth (or baseline data) to evaluate the results, which we can explore in the exercise.
+
+### Exercise
+
+I hope you can play with the code a little bit yourself and you (as a group) are going to use the iris dataset to try to the clustering methods.
+
+Try the two methods above using the code example.
+```
+Please remember that we don't want to use the category in our clustering method; instead, we will only use the four numeric variables.
+```
+
+``` {r}
+data1 = iris[, 1:4]
+```
+
+Also, please figure out a way to compare the results from the clustering method with the original category!
+
+```
+One way to do it is to use the table() function and include two lists or columns, such as:
+
+table(data$col1, data$col2)
+```

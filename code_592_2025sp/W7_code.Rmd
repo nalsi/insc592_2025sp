@@ -1,0 +1,258 @@
+---
+title: "Regression Demonstration"
+author: "Kai Li"
+date: "2024-04-10"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# install.packages("psych")
+library(tidyverse)
+library(huxtable)
+library(jtools)
+library(psych)
+library(ggeffects)
+library(modelr)
+library(ggplot2)
+# data from jtools package
+data(movies)
+?movies
+
+```
+
+## Regression demonstration
+
+### Inference
+
+Our overall question in the demo is how are other factors, including the US box office (us_gross), IMDB rating (imdb_rating), length (runtime), and genre (genre5), influencing the metascore (score on MetaCritic) for all movies in this dataset?
+
+We can first run a basic descriptive analysis to have a feeling of the data using the describe() function from psych package.
+
+One thing we can observe is that metascore column has 10 NA values that we should address (we can safely remove the 10 rows in this case, given the small number).
+
+```{r}
+# Let's look at the key variables
+psych::describe(movies[, c("metascore", 'us_gross', "imdb_rating", "runtime")])
+```
+
+```{r}
+# Genre cannot be summarized as numeric, so let's create a table to look at its values
+table(movies$genre5)
+```
+
+We will first construct a very simple multiple regression model with one dependent variable and four independent variables:
+
+metascore \~ year + imdb_rating + us_gross + genre5
+
+Let's try linear regression first.
+
+We use log(us_gross) because its sheer size is too large.
+Generally, using log is a way to make sure that the very large numbers in one variable won't introduce noise to the model.
+One explanation can be found here: <https://people.duke.edu/~rnau/411log.htm#>:\~:text=If%20the%20situation%20is%20one,sequences%20of%20gains%20and%20losses.
+
+The lm() function is based on the OLS algorithm.
+
+```{r}
+# We first removed all rows with NA values in the DV.
+movies = movies[is.na(movies$metascore) == F,]
+# And then construct the model. In the model, we can directly apply log() on a specific variable.
+fit <- lm(metascore ~ runtime + imdb_rating + log(us_gross) + genre5, data = movies)
+summ(fit)
+```
+
+**Based on the example of our lecture, how would you interpret the results?**
+
+Some observations we can make: 1.
+The model is decent in terms of its predictability, being able to explain 55% of all variation.
+2.
+All the variables seems to be pretty significant, with the exception of box office.
+For example, the increasing of 1 point in IMDB rating will lead to 13 points more in the score that we examine.
+3.
+Genre, as the only categorical variable, is displayed differently from other variables.
+From the summary, we can see that Action movie is used as the baseline, so all other categories are compared with Action films.
+So Comedy, Drama, and Other are significantly more likely to have higher score than Action.
+
+But we also need to check if the model meets the requirements for regression.
+
+The plot() function provides a basic pipeline to check the assumptions of linear regression models.
+I am copying the explanation of the four graphs from the following link: <http://www.sthda.com/english/articles/39-regression-model-diagnostics/161-linear-regression-assumptions-and-diagnostics-in-r-essentials/>.
+- Residuals vs Fitted.
+Used to check the linear relationship assumptions.
+A horizontal line, without distinct patterns is an indication for a linear relationship, what is good.
+- Normal Q-Q. Used to examine whether the residuals are normally distributed.
+It’s good if residuals points follow the straight dashed line.
+- Scale-Location (or Spread-Location).
+Used to check the homogeneity of variance of the residuals (homoscedasticity).
+Horizontal line with equally spread points is a good indication of homoscedasticity.
+This is not the case in our example, where we have a heteroscedasticity problem.
+- Residuals vs Leverage.
+Used to identify influential cases, that is extreme values that might influence the regression results when included or excluded from the analysis.
+Again, we will look at if the red line is straight.
+
+```{r}
+par(mfrow = c(2, 2))
+plot(fit)
+```
+
+Our data generally meet the requirements, as we can see pretty straight red lines and a straight distribution in the second graph.
+If we see very obvious deviations, then we should be more worried about.
+
+We can also play with the summ() function to show some other things, like confidence interval (the value range between 2.5% and 97.5%) for each variable.
+That is the influence of each variable on the DV under 95% of confidence.
+
+```{r}
+summ(fit, confint = TRUE, digits = 3)
+```
+
+Now we can report our general results using the norm of whichever citation format we choose, by reporting R\^2 value, and possibly including a table to summarize the effect of each IV.
+
+For example: (We generally need to specify the model, including all variables, in the Methods section.) "Simple linear regression was used to test if hours studied significantly predicted exam score. The overall regression was statistically significant (R2 = 55, F(7, 823) = 47.99, p \< .000). It was found that the IMDB rating significantly predicted the Metascore of the movie (β = 13.02 [12.03 - 14.02 under 95% of confidence], p \< .000)."
+
+And we can also create some visualization in our report.
+For example, we can create the coefficient chart by using plot_summs() function below.
+An easy interpretation is that any bar that does not cross the zero-line is a significant result.
+In addition, we can also compare the performance of all the genre categories as well.
+
+```{r}
+# This is a nice Base function to visualize the coefficient and 95% conficence interval for each of the IVs.
+plot_summs(fit)
+```
+
+Or we can use ggpredict() function from ggeffects package to visualize all categories in a categorical variable.
+
+You can also try to remove the terms parameter to get all visualization!
+
+```{r}
+# ggpredict() is a pretty nice function to visualize the effect of all IVs.
+# Especially for categorical IVs, we can see the comparison between all categories.
+ggpredict(fit, 
+          terms = c("genre5")) |> 
+  plot()
+```
+
+We can draw similar conclusions by drawing a box plot based on our raw data (we can say this is descriptive statistics).
+But the results from regression model is after controlling other compounding factors, so it shows the **independent** effect of genre on metascore after controlling other IVs.
+
+```{r}
+# The results above should be pretty similar to descriptive boxplot (remember that this is showing the descriptive distribution).
+# But there is a big difference between these two approaches as descriptive results are not showing statistical significance.
+ggplot(movies, aes(x = genre5, y = metascore)) +
+  geom_boxplot()
+```
+
+And show the results on the level of variables in a very official table.
+(We can include more models if needed in this function.)
+
+```{r}
+jtools::export_summs(fit, scale = TRUE)
+```
+
+```{r}
+# we can also use plot_summs to compare multiple models as well.
+plot_summs(fit, fit1)
+```
+
+For example, we can create two alternative models to compare with our model above.
+
+```{r}
+# We can use the jtools::export_summs() function to get a pretty professional summary table.
+fit1 = lm(metascore ~ runtime + imdb_rating + genre5, data = movies)
+fit2 <- lm(metascore ~ runtime + imdb_rating + log(us_gross) + genre5 + imdb_votes, data = movies)
+compare_table = jtools::export_summs(fit, fit1, fit2, scale = TRUE)
+print(compare_table)
+```
+
+We see that there is no major difference between the three models, because there is a very strong predictor, imdb_rating, in all the models.
+
+Another consideration is that when we construct the model, it is important to reflect on the reasons why certain variables are included in the model at all: does it make sense to include them?
+(because models with more independent variables generally have better performance than those with fewer independent variables.) In research articles, we may want to collect previous evidence of certain variables are important for the outcome.
+But in a more regular technical report, then if you could justify the selection of variables in whatever way (say it's an interesting and/or important variable), that should be fine.
+
+We can evaluate our model model anyways by just focusing on the training data.
+
+R\^2, RMSE and MAE are the three very commonly used measurement for the accuracy of the model, you can find their definitions from Google search.
+But I offered some explanations below.
+- R\^2 is the most direct evaluation of goodness-of-fit of the model, by showing the share of variance in the data that can be explained by the model.
+We hope the number to be as close to 1 as possible, but anything above 0.5 is good enough for social data.
+- RMSE (root-mean-squared-error) shows the mean difference between predicted value and the actual value.
+So on average, our predicted values is 11.3 points different from the actual values.
+This is not too bad given the scale of the DV.
+- MAE (mean absolute error) is another way to calculate the difference between predicted and actual values.
+
+```{r}
+# Based on our inference model, we can calculate various measurement to understand the validity of the model, just based on the training data.
+data.frame(
+  R2 = rsquare(fit, data = movies),
+  RMSE = rmse(fit, data = movies),
+  MAE = mae(fit, data = movies)
+)
+```
+
+### Prediction
+
+So the learning/prediction part...
+
+But a more meaningful approach is to use training and testing sets and evaluate the prediction on the testing set.
+This is because evaluating the precision of training data is not very meaningful (it can still give us some information though).
+
+```{r}
+# we create a sample that is 75% of the movies dataset
+sample <- sample(c(TRUE,FALSE), nrow(movies),  
+                 replace=TRUE, prob=c(0.75,0.25)) 
+# creating training dataset using the 75% of data
+train_dataset  <- movies[sample, ] 
+# creating testing dataset using the rest of the data
+test_dataset  <- movies[!sample, ] 
+```
+
+We can use our model to predict the outcomes and then evaluate our results, **even though technically, we may want to split the training and test datasets to do it separately**.
+Predicting the same data points that we used to train the model is not meaningful.
+But the purpose of the following two chunks is to show you the basic prediction and evaluation functions.
+
+```{r}
+# How prediction works is that we can use the training dataset to create the model.
+fit_training = lm(metascore ~ runtime + imdb_rating + log(us_gross) + genre5, data = train_dataset)
+# And then apply the model on the test set.
+test_dataset$prediction <- predict(fit_training, new = test_dataset)
+```
+
+```{r}
+# We can further compare the accuracy on the test set!
+rmse <- sqrt(mean((test_dataset$metascore - test_dataset$prediction)^2))
+r_squared <- cor(test_dataset$metascore, test_dataset$prediction)^2
+mae <- mean(abs(test_dataset$metascore - test_dataset$prediction))
+
+print("R^2:")
+print(r_squared)
+print("RMSE:")
+print(rmse)
+print("MAE:")
+print(mae)
+```
+
+We can see that individual samples may bring noises to the results (for example, the latest R\^2 value is much higher than the training model).
+To controlling the noises by individual biases, there is a strategy called k-fold cross-validation to resample data k times to test the same model.
+
+```{r}
+library(caret)
+
+# define training control which
+# generates parameters that further
+# control how models are created
+train_control <- caret::trainControl(method = "cv", # method parameter specifies a resampling method, CV = cross validation
+                                    number = 10) # number parameter specifies the time of resampling; normally 5 or 10
+# building the model and 
+# predicting the target variable
+# as per the Naive Bayes classifier
+model <- caret::train(metascore ~ runtime + imdb_rating + log(us_gross) + genre5, data = movies, 
+               trControl = train_control, 
+               method = "lm")
+print(model)
+```
+
+From the result, we can see that the k fold evaluation can get the results that are pretty similar to the training model, which is a more accurate evaluation of the performance of our model.

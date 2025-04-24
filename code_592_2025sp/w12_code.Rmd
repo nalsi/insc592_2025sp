@@ -1,0 +1,280 @@
+---
+title: "demo_W12_ggplot2"
+author: "Kai Li"
+date: "2025-04-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(MASS)
+library(tidyverse)
+data = MASS::Boston
+
+# Let's create some categorical variables for visualization purposes.
+data = data %>% mutate(age_group = case_when(age < 66 ~ "Low",
+                                           age >= 66 ~ "High"),
+                       medv_group = case_when(medv < 20 ~ "Low",
+                                           (medv >= 20 & medv < 30) ~ "Middle",
+                                           medv >= 30 ~ "High"))
+
+# We still want to check if the transformation is OK after doing the transformation.
+
+table(data$age_group)
+table(data$medv_group)
+
+```
+
+### Basic structure of ggplot2
+
+ggplot2 code follows the basic GG framework: i.e., define data aesthetics, and graphs one step after another.
+
+``` {r}
+# ggplot() defines the data as well as the basic aesthetics
+g1 = ggplot(data = data, mapping = aes(x = nox, y = dis))
+# in this line: "data = ", "mapping = ", "x =" and "y =" can be ignored as long as they are offered by this order.
+# i.e., the following line will do the same thing
+g1 = ggplot(data, aes(nox, dis))
+# but if we want to use other features, then we need to specify them
+g1 = ggplot(data, aes(nox, dis, color = age))
+```
+
+All steps are connected by "+" between function.
+
+And following the data and aesthetics, we need to define the graph. In this case, one of the few options we have is to use a scatterplot.
+
+``` {r}
+g1 + geom_point()
+```
+
+BTW, this graph is equivalent to the following code, which is a little easier to read:
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age)) +
+  geom_point()
+```
+
+We need to make sure that the choice of the graph is consistent with the choice of aesthetics, otherwise, the display will be problematic. For example, using the first line to create a histogram will cause an error.
+
+``` {r}
+# g1 + geom_histogram()
+```
+
+What aes() does in the first line is to map the variables to features. Anything in the aes() function are features to be mapped to a variable. We can also use content values for the features, as in the following example:
+
+``` {r}
+ggplot(data, aes(nox, dis)) +
+  geom_point(color = "red")
+```
+
+And sometimes it does matter in which function we will define all the aes() features:
+```
+- For regular features, like x and y, it doesn't matter where we use it; even though they are traditionally used in the first line.
+- For features that are specific to a graph type (like color of dots), it is safer to define them in the specific graph function. For example, in the previous graph, if we use color="red" in the first line, the display will be wrong.
+```
+
+### Adding other layers
+
+In this section, we are going to show how to add different layers to ggplot2 graphs. One thing to remember is that **each layer in ggplot2 is independent from each other**, so we won't change other layers by just adding a new one.
+
+#### Stats
+
+In the graph below, we added statistical summary to the graph. 
+
+For this graph, because we define color in the first line, this parameter is passed to both scatterplot and the linear regression trend line! And we can see that for both of the price groups, there is a decreasing trend between the two variables.
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  stat_smooth(method = "lm")
+```
+
+Instead, we can just use color in one of the graphs.
+
+``` {r}
+ggplot(data, aes(nox, dis)) +
+  geom_point(aes(color = age_group)) + 
+  stat_smooth(method = "lm")
+```
+
+#### Facet
+
+Another thing is to change the graph to small multiples.
+```
+For this graph, we may want to sort the panels, which you can figure out how to do it yourself!
+Also, feel free to test what you can do using the facet_wrap() function, or a similar facet_grid() function.
+```
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2)
+```
+
+#### Coordinate
+
+Various coord_X functions could change the coordinate. For example, we can use coord_flip() to flip the x- and y-axes. This is particular helpful for bar chart with very long category names, such as the following example: https://www.indezine.com/products/powerpoint/learn/chartsdiagrams/longer-axis-labels-why-bar-charts-are-better.html. 
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  coord_flip()
+```
+
+Another thing we can do is to change the Cartesian coordinate (i.e., x- and y-axes) of the graph. For example, we can use polar coordinate instead, which will be much more useful for a bar chart.
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  coord_polar()
+```
+
+#### Titles and labels
+
+But since the above graph is already pretty decent, we can fix the titles and labels, et al, including the following things:
+```
+- Graph title and subtitle (we don't always need it as it really depends on the venue): using labs()
+- x and y labels: define in scale_X functions or labs()
+- x and y breaks: define in scale_X functions or xlim() and ylim()
+- any legend title: also define in scale_X functions
+- theme
+```
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  labs(title = "Relationship between nitrogen oxides\nconcentration and Distance to\ncenters for Boston neighborhoods", 
+       x = "Nitrogen oxides concentration\n(parts per 10 million)",
+       y = "Distances to Boston\nemployment centres") + 
+  xlim(0.25, 1) +
+  ylim(0, 12.5) +
+  scale_color_discrete(
+    name = "Age of the\nneighborhood"
+  ) +
+  theme_linedraw()
+```
+Sometimes, we may need to adjust the axis and legends using the scale functions.
+```
+For example, scale_color_discrete() says that we are changing the categorical color used in the graph. We must use the correct combination here for the function to work properly.
+- Color can be replace by "x", "y" and any other feature name.
+- Discreate can be replace by "continuous" as well as some other scales.
+```
+For example: instead of using xlim, we can do the following:
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  labs(title = "Relationship between nitrogen oxides\nconcentration and Distance to\ncenters for Boston neighborhoods", 
+       x = "Nitrogen oxides concentration\n(parts per 10 million)",
+       y = "Distances to Boston\nemployment centres") + 
+  scale_x_continuous( # we can use name here to replace the xlabs, but it's not needed anymore since we already did that
+    limits = c(0.25, 1),
+    breaks = c(0.25, 0.5, 0.75, 1)
+  ) +
+  ylim(0, 12.5) +
+  scale_color_discrete(
+    name = "Age of the\nneighborhood"
+  ) +
+  theme_linedraw()
+```
+
+### Exporting the graphs
+
+Now we are having a relatively satisfying graph. We can talk about how to export the graph. We have the following four options:
+```
+- Plots - Export (DO NOT USE)
+- Right click the graph - Save (Do not use)
+- If we are in a rmd file, we can save the graph to the knitted document, but we may want to change the parameters so that it's exported in an ideal format.
+- ggsave()
+```
+ggsave() is the default saving function for ggplots graphs, where we can define:
+```
+- File name and path: We can directly save the graph to the graph folder, for example. Also, please use meaningful file names.
+- Figure width and height: we can define the unit of the values. For this, we may want to test if the exported graph is displayed correctly using a specific configuration.
+- DPI (dots per inch): the quality of the figure, recommended at least 300.
+```
+
+``` {r}
+ggsave(filename = "g1.jpg", 
+       width = 5, height = 4, unit = "in", 
+       dpi = 500)
+```
+
+We can certainly insert the graph in an rmd file and knit the document later. But we may want to using the above setting in the graph chunk as well. Otherwise, the graph may be in whatever format the software decides and in very low quality.
+
+``` {r, figure.width = 5, figure.height = 4, dpi = 500}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  labs(title = "Relationship between nitrogen oxides\nconcentration and Distance to\ncenters for Boston neighborhoods", 
+       x = "Nitrogen oxides concentration\n(parts per 10 million)",
+       y = "Distances to Boston\nemployment centres") + 
+  scale_x_continuous( # we can use name here to replace the xlabs, but it's not needed anymore since we already did that
+    limits = c(0.25, 1),
+    breaks = c(0.25, 0.5, 0.75, 1)
+  ) +
+  ylim(0, 12.5) +
+  scale_color_discrete(
+    name = "Age of the\nneighborhood"
+  ) +
+  theme_linedraw()
+```
+
+### Color in ggplot2
+
+We can talk a little bit more about color. There are a number of functions related to color: 
+```
+- scale_color_discrete(): for categorical values used in color
+- scale_color_continuous(): for numeric values used in color
+- scale_color_manual(): totally free choices for the use of colors
+- scale_color_brewer(): using the RColorBrewer palettes
+- ...
+- You can see an introduction here: https://stackoverflow.com/questions/70942728/understanding-color-scales-in-ggplot2.
+```
+For example, we can use the scale_color_brewer() function to use the palette "Set2" in RColorBrewer.
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  labs(title = "Relationship between nitrogen oxides\nconcentration and Distance to\ncenters for Boston neighborhoods", 
+       x = "Nitrogen oxides concentration\n(parts per 10 million)",
+       y = "Distances to Boston\nemployment centres") + 
+  scale_x_continuous( # we can use name here to replace the xlabs, but it's not needed anymore since we already did that
+    limits = c(0.25, 1),
+    breaks = c(0.25, 0.5, 0.75, 1)
+  ) +
+  ylim(0, 12.5) +
+  scale_color_brewer(
+    name = "Age of the\nneighborhood",
+    palette = "Set2"
+  ) +
+  theme_linedraw()
+```
+
+Another option would be to use the manual function to create a new palette manually.
+
+``` {r}
+ggplot(data, aes(nox, dis, color = age_group)) +
+  geom_point() + 
+  facet_wrap(~medv_group, nrow = 2) +
+  labs(title = "Relationship between nitrogen oxides\nconcentration and Distance to\ncenters for Boston neighborhoods", 
+       x = "Nitrogen oxides concentration\n(parts per 10 million)",
+       y = "Distances to Boston\nemployment centres") + 
+  scale_x_continuous( # we can use name here to replace the xlabs, but it's not needed anymore since we already did that
+    limits = c(0.25, 1),
+    breaks = c(0.25, 0.5, 0.75, 1)
+  ) +
+  ylim(0, 12.5) +
+  scale_color_manual(
+    name = "Age of the\nneighborhood",
+    values = c("red", "blue", "green")
+  ) +
+  theme_linedraw()
+```

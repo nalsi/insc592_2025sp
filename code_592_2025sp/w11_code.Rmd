@@ -1,0 +1,129 @@
+---
+title: "Week 11 demonstration: ANN"
+author: "Kai Li"
+date: "2025-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# first, install the "neuralnet" package for ANN analysis...
+# by running the following line (remove # youself!)
+# install.package("neuralnet")
+
+library(MASS)
+library(neuralnet)
+library(modelr)
+data = MASS::Boston
+
+```
+
+## Deep learning using ANN model
+
+Let's first create the training and test sets for prediction.
+
+```{r}
+# we can use set.seed(n) to get reproducible results for any task involve randomization.
+set.seed(1)
+
+# ANN works better if the data is normalized.
+data_scaled <- as.data.frame(scale(data))
+
+
+# we create a sample that is 75% of the movies dataset
+sample <- sample(c(TRUE,FALSE), nrow(data_scaled),  
+                 replace=TRUE, prob=c(0.75,0.25)) 
+# creating training dataset 
+train_dataset  <- data_scaled[sample, ] 
+# creating testing dataset 
+test_dataset  <- data_scaled[!sample, ] 
+```
+
+We can try a simple prediction, which is to use everything in the dataset to predict the house price (medv).
+
+``` {r}
+# neuralnet() function does not accept "medv ~ .", so we have to spell out all IVs.
+# we can also play with the hidden parameter to change the complexity of the model...
+# More complex models are more accurate but much more slower...
+# linear.output parameter specifies whether it is a linear model or not.
+nn.5 <- neuralnet(medv ~ crim + zn + indus + chas + nox + rm + age + dis + rad + tax, 
+                    train_dataset, 
+                    hidden=5, 
+                    linear.output = T)
+```
+
+We can use the default visualization function in neuralnet package to see the results, but there is not much to see!
+``` {r}
+# We can change the show.weights parameter to see weight, but it's much less useful than in other statistical models.
+plot(nn.5,
+     show.weights = F)
+```
+
+We can see how well the training model works: remember, our data has been normalized. 
+
+``` {r}
+# Based on our inference model, we can calculate various measurement to understand the validity of the model, just based on the training data.
+data.frame(
+  RMSE = rmse(nn.5, data = train_dataset),
+  MAE = mae(nn.5, data = train_dataset)
+)
+```
+
+And we can further compare the ANN model with linear regression model. Lower RMSE and MAE values means lower prediction errors. So ANN does work better than linear regression (which is not surprising).
+
+``` {r}
+lm_model <- lm(medv ~ crim + zn + indus + chas + nox + rm + age + dis + rad + tax, 
+               train_dataset)
+data.frame(
+  RMSE = rmse(lm_model, data = train_dataset),
+  MAE = mae(lm_model, data = train_dataset)
+)
+```
+We can also compare our nn.5 model with a more complex model.
+
+``` {r}
+nn.8 <- neuralnet(medv ~ crim + zn + indus + chas + nox + rm + age + dis + rad + tax, 
+                    train_dataset, 
+                    hidden=8, 
+                    linear.output = T)
+data.frame(
+  RMSE = rmse(nn.8, data = train_dataset),
+  MAE = mae(nn.8, data = train_dataset)
+)
+```
+
+Similarly, we can predict the values on the test set and compare the results. And again, the ANN model is superior.
+
+``` {r}
+predict1 = predict(nn.5, test_dataset)
+predict2 = predict(lm_model, test_dataset)
+```
+
+``` {r}
+# We can further compare the accuracy on the test set!
+rmse <- sqrt(mean((test_dataset$medv - predict1)^2))
+r_squared <- cor(test_dataset$medv, predict1)^2
+mae <- mean(abs(test_dataset$medv - predict1))
+
+print("R^2:")
+print(r_squared)
+print("RMSE:")
+print(rmse)
+print("MAE:")
+print(mae)
+```
+
+``` {r}
+# We can further compare the accuracy on the test set!
+rmse <- sqrt(mean((test_dataset$medv - predict2)^2))
+r_squared <- cor(test_dataset$medv, predict2)^2
+mae <- mean(abs(test_dataset$medv - predict2))
+
+print("R^2:")
+print(r_squared)
+print("RMSE:")
+print(rmse)
+print("MAE:")
+print(mae)
+```
